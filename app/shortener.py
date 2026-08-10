@@ -91,17 +91,7 @@ class Shortener:
         if existing is not None:
             code = existing["code"]
         else:
-            code = self._generate_unique_code()
-            try:
-                db.insert_link(code, url)
-            except sqlite3.IntegrityError:
-                # Someone else inserted the same URL (or, far less likely,
-                # the same code) concurrently; fall back to whatever is
-                # actually stored for this URL now.
-                existing = db.get_by_url(url)
-                if existing is None:
-                    raise
-                code = existing["code"]
+            code = self._insert_with_retry(url)
 
         return {"code": code, "short_url": f"{self.base_url}/{code}"}
 
@@ -117,6 +107,33 @@ class Shortener:
         while db.get_by_code(code) is not None:
             code = generate_code()
         return code
+
+    def _insert_with_retry(self, url: str, max_attempts: int = 5) -> str:
+        """Insert ``url`` under a freshly generated code, retrying on a
+        code (PRIMARY KEY) collision.
+
+        The uniqueness probe in :meth:`_generate_unique_code` narrows the
+        window but doesn't close it: another request can still claim the
+        same code between the probe and this INSERT. A URL (UNIQUE) clash
+        means someone else concurrently stored this exact URL, so we return
+        their code instead of retrying; a code clash is regenerated up to
+        ``max_attempts`` times before failing cleanly.
+        """
+        last_error: sqlite3.IntegrityError | None = None
+        for _ in range(max_attempts):
+            code = self._generate_unique_code()
+            try:
+                db.insert_link(code, url)
+                return code
+            except sqlite3.IntegrityError as exc:
+                existing = db.get_by_url(url)
+                if existing is not None:
+                    return existing["code"]
+                last_error = exc
+
+        raise RuntimeError(
+            f"Could not generate a unique short code after {max_attempts} attempts"
+        ) from last_error
 
 
 # Module-level default store used by the FastAPI app.
