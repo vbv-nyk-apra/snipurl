@@ -48,6 +48,17 @@ def generate_code(length: int = CODE_LENGTH) -> str:
     return "".join(secrets.choice(CODE_ALPHABET) for _ in range(length))
 
 
+def is_valid_code_shape(code: str) -> bool:
+    """Return True if ``code`` has the expected length and alphabet.
+
+    Does not check whether the code is actually registered; callers should
+    treat a shape-invalid code the same as an unknown one (404, not 500).
+    """
+    if not isinstance(code, str) or len(code) != CODE_LENGTH:
+        return False
+    return all(ch in CODE_ALPHABET for ch in code)
+
+
 class Shortener:
     """In-memory URL shortener store.
 
@@ -84,7 +95,9 @@ class Shortener:
         return {"code": code, "short_url": f"{self.base_url}/{code}"}
 
     def resolve(self, code: str) -> str | None:
-        """Return the long URL for ``code``, or None if not found."""
+        """Return the long URL for ``code``, or None if not found or malformed."""
+        if not is_valid_code_shape(code):
+            return None
         return self._code_to_url.get(code)
 
     def _generate_unique_code(self) -> str:

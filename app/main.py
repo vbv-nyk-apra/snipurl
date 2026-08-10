@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from app.shortener import InvalidURLError, shortener
@@ -21,3 +22,11 @@ def shorten(request: ShortenRequest):
         return shortener.shorten(request.url)
     except InvalidURLError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/{code}")
+def redirect(code: str):
+    target = shortener.resolve(code)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Short code not found.")
+    return RedirectResponse(url=target, status_code=307)
