@@ -25,11 +25,12 @@ def test_redirect_with_valid_code_returns_307_and_location_header():
 def test_redirect_with_unknown_valid_code_returns_404_with_json_body():
     """Test that a valid-shaped but unknown code returns 404 with JSON body."""
     # Use a valid-shaped code that we know doesn't exist (7 alphanumeric chars)
-    response = client.get("/unknown1", follow_redirects=False)
+    response = client.get("/unknow1", follow_redirects=False)
 
     assert response.status_code == 404
+    assert response.headers["content-type"].startswith("application/json")
     body = response.json()
-    assert "detail" in body or isinstance(body, dict)
+    assert body["detail"]
 
 
 def test_redirect_with_invalid_shape_code_returns_404_not_500():
