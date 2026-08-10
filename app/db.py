@@ -9,8 +9,8 @@ The ``url`` column has a schema-level UNIQUE constraint, so inserting a
 duplicate URL raises ``sqlite3.IntegrityError`` regardless of what Python-side
 checks a caller does (or skips).
 
-Nothing in the application wires these helpers up yet -- that happens in a
-follow-up task.
+:mod:`app.shortener` wires these helpers up as the storage layer for the
+``/shorten`` and ``/{code}`` endpoints.
 """
 
 from __future__ import annotations

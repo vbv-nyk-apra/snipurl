@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import os
 import secrets
+import sqlite3
 import string
 from urllib.parse import urlparse
+
+from app import db
 
 CODE_LENGTH = 7
 CODE_ALPHABET = string.ascii_letters + string.digits
@@ -60,16 +63,16 @@ def is_valid_code_shape(code: str) -> bool:
 
 
 class Shortener:
-    """In-memory URL shortener store.
+    """URL shortener backed by the SQLite store in :mod:`app.db`.
 
     Maps long URLs <-> short codes. Idempotent: shortening the same URL
-    twice returns the same code. Replaced by SQLite-backed storage later.
+    twice returns the same code. The SQLite ``links`` table (and its UNIQUE
+    constraint on ``url``) is the sole source of truth -- no in-memory dict
+    is kept.
     """
 
     def __init__(self, base_url: str | None = None):
         self._base_url = base_url
-        self._url_to_code: dict[str, str] = {}
-        self._code_to_url: dict[str, str] = {}
 
     @property
     def base_url(self) -> str:
@@ -84,13 +87,21 @@ class Shortener:
         """
         validate_url(url)
 
-        existing_code = self._url_to_code.get(url)
-        if existing_code is not None:
-            code = existing_code
+        existing = db.get_by_url(url)
+        if existing is not None:
+            code = existing["code"]
         else:
             code = self._generate_unique_code()
-            self._url_to_code[url] = code
-            self._code_to_url[code] = url
+            try:
+                db.insert_link(code, url)
+            except sqlite3.IntegrityError:
+                # Someone else inserted the same URL (or, far less likely,
+                # the same code) concurrently; fall back to whatever is
+                # actually stored for this URL now.
+                existing = db.get_by_url(url)
+                if existing is None:
+                    raise
+                code = existing["code"]
 
         return {"code": code, "short_url": f"{self.base_url}/{code}"}
 
@@ -98,11 +109,12 @@ class Shortener:
         """Return the long URL for ``code``, or None if not found or malformed."""
         if not is_valid_code_shape(code):
             return None
-        return self._code_to_url.get(code)
+        row = db.get_by_code(code)
+        return row["url"] if row is not None else None
 
     def _generate_unique_code(self) -> str:
         code = generate_code()
-        while code in self._code_to_url:
+        while db.get_by_code(code) is not None:
             code = generate_code()
         return code
 
